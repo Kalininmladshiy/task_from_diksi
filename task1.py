@@ -1,8 +1,13 @@
 import os
 import pandas
 import shutil
+import smtplib
+import random
 from pathlib import Path
 from datetime import datetime
+from email.message import EmailMessage
+from dotenv import load_dotenv
+from PIL import Image, ImageDraw
 
 
 
@@ -17,9 +22,10 @@ def create_files(excel_data, path_to_docs):
         document_types = document['Документы для формирования'].split(',')
         document_date = document['Дата документа']
         for document_type in document_types:
-            filename = f'КА_{code_ka}_{document_type}_{document_date}.txt'
-            with open (Path() / path_to_docs / filename, 'w', encoding='utf-8') as file:
-                pass
+            img = Image.new('L', (1000, 1000), 'white')
+            filename = f'КА_{code_ka}_{document_type}_{document_date}.png'
+            img.save(Path() / path_to_docs / filename)
+            img.close()
 
 
 def get_files_names(folder_path):
@@ -71,7 +77,44 @@ def is_file_in_folder(path_to_folder, filename):
     return os.path.exists(file_path)
 
 
+def send_mail_with_random_file(
+    sender_email,
+    recipient_email,
+    subject,
+    email_body,
+    path_to_folder,
+    file_type,
+    email_password,
+     ):
+    file_name = random.choice(get_files_names(path_to_folder))
+    past_stamp(path_to_folder, file_name)
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = sender_email
+    msg['To'] = recipient_email
+    msg.set_content(email_body)
+    with open(Path() / path_to_folder / file_name, 'rb') as f:
+        file_data = f.read()
+    msg.add_attachment(file_data, maintype="application", subtype=file_type, filename=file_name)
+    with smtplib.SMTP_SSL('smtp.mail.ru', 465) as smtp:
+        smtp.login(sender_email, email_password)
+        smtp.send_message(msg)
+
+
+def past_stamp(path_to_folder, img_filename):
+    img2 = Image.open('stamp.png')
+    img = Image.open(Path() / path_to_folder / img_filename)
+    img.paste(img2, (30, 700))
+    img.save(Path() / path_to_folder / img_filename)
+    img.close()
+    img2.close()
+
+
 if __name__ == '__main__':
+    load_dotenv()
+    sender_email = os.environ['SENDER_EMAIL']
+    email_password = os.environ['EMAIL_PASSWORD']
+    recipient_email = 'kalinin.maksim85@yandex.ru'
     os.mkdir('documents')
     path_to_docs = Path.cwd() / 'documents'
     excel_data = pandas.read_excel('Задание.xlsx', sheet_name='Лист1').to_dict(
@@ -91,3 +134,15 @@ if __name__ == '__main__':
             is_file_in_folder(folder_2, filename) or 
             is_file_in_folder(folder_3, filename)):
             os.remove(file_path)
+    subject = 'Документы от Dixi'
+    email_body = 'Уважаемый партнер, высылаем вам документы во вложении!'
+    file_type = 'png'
+    send_mail_with_random_file(
+        sender_email,
+        recipient_email,
+        subject,
+        email_body,
+        path_to_docs,
+        file_type,
+        email_password,
+     )
